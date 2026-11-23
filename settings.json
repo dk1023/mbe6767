@@ -1,0 +1,18 @@
+{
+  "bankroll": 1000.0,
+  "unit": 5.0,
+  "kelly_fraction": 0.25,
+  "max_stake_pct": 0.03,
+  "min_edge": {
+    "nfl": 0.03,
+    "soccer": 0.03
+  },
+  "soccer_comps": [
+    "EPL",
+    "LALIGA",
+    "SERIEA",
+    "UCL",
+    "UEL"
+  ],
+  "soccer_days": 3
+}

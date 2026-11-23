@@ -1,0 +1,12 @@
+{
+  "_note": "Chosen by walk-forward grid search (soccer: 2025-26 big-5 leagues; NFL: 2023-2026 seasons). blend_w = weight on the model when pooled with market prices. Re-checked Nov 2026 with a holdout (NFL: choose on 2019-23, test on 2024-26; soccer: choose on 2024-25, test on 2025-26+): only soccer xi 0.008 -> 0.012 improved both periods; every other setting was already at its best.",
+  "soccer": {
+    "params": {"market_weight": 1.0, "goal_weight": 0.6, "xi": 0.012, "ridge": 0.25, "xi_uefa": 0.0015, "uefa_boost": 1.0},
+    "blend_w": 0.05
+  },
+  "nfl": {
+    "params": {"ridge": 1.0, "ridge_qb": 0.05, "season_decay": 0.5, "w_epa": 0.1, "w_market": 0.7, "w_result": 0.2, "xi": 0.005, "ridge_inj": 3.0},
+    "spread_blend_w": 0.1,
+    "total_blend_w": 0.15
+  }
+}

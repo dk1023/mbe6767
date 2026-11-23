@@ -1,0 +1,6 @@
+# The runs on GitHub install exactly the versions this PC uses, so saved runs open the same on both.
+numpy==2.4.4
+scipy==1.18.1
+pandas==3.0.2
+shiny==1.9.0
+htmltools==0.7.0

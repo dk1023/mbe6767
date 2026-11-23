@@ -1,0 +1,9 @@
+# keys and this PC's data never go to GitHub
+config.json
+data/
+snapshot/
+logs/
+.claude/
+__pycache__/
+*.pyc
+picks_export.csv

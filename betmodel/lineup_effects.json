@@ -1,0 +1,6 @@
+{
+  "_note": "Fitted on ~3,000 matches (EPL, La Liga, Serie A, UCL, UEL; Aug 2024 - Nov 2026). Feature 'reg' = minutes share of the starting XI minus that of the team's 11 most-used players over its last 10 matches within 120 days (0 = full strength; about -1 per regular missing). Walk-forward test (2,398 matches from Jan 2025): 1X2 log-loss 0.9667 -> 0.9643. Box-score xG+xA and on-pitch xG plus-minus ratings were tested and added nothing beyond this.",
+  "features": ["reg"],
+  "coef": {"own_reg": 0.0449, "opp_reg": -0.0459},
+  "cap": 0.25
+}
