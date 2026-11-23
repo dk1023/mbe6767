@@ -90,8 +90,9 @@ never your keys or settings. Without the GitHub runs below, the page is frozen a
 Because the odds are free (no keys), the whole model can run on GitHub's computers, free for a public
 repo. Once it's set up:
 
-- **The model runs by itself every 2 hours** (fresh DraftKings and Kalshi prices, new picks), and **scores,
-  grading and results update every 30 minutes** while games are on. The PC can be off.
+- **The model runs by itself every 2 hours** (fresh DraftKings and Kalshi prices, new picks), and **every 30
+  minutes in the 3 hours before any kickoff**, when confirmed soccer lineups, NFL inactives and late price moves
+  come out. **Scores, grading and results update every 30 minutes** while games are on. The PC can be off.
 - **The phone page has a Run button.** One tap starts a full run; a card shows each step and the page
   reloads with the new results in about 4 minutes. The first time, it asks for a GitHub key, which it keeps
   on that phone only. Make one at github.com/settings/personal-access-tokens/new: Only select repositories →
@@ -340,6 +341,20 @@ minimum edge, not a weekend's results. From a terminal: `.\betmodel.cmd pricelog
 | NFL moneyline log-loss | 0.6241 | 0.6080 |
 
 The models come close to the sharp close but don't beat it. No public model does.
+
+**So the predictions blend the model with the market.** Every headline call, simulated spread and total, and
+the Results page's prediction record use the same mix the prices use (NFL spreads 10% model / 90% market,
+totals 15% / 85%, soccer 5% / 95%; "model alone" is shown underneath). On the history table's past games:
+
+| | Model alone | Books (closing line) | Blend |
+|---|---|---|---|
+| NFL winners right (2,388 games) | 65.7% | 66.4% | 66.4% |
+| NFL average miss on the margin | 10.03 | 9.81 | 9.81 |
+| NFL average miss on the total | 10.53 | 10.41 | 10.41 |
+| Soccer results right (2,614 matches) | 53.3% | 54.2% | 54.4% |
+
+That's as accurate as the books, not more: beating them on accuracy would take data they don't have. The
+money comes from the recommended bets, where DraftKings is out of line with Kalshi.
 
 ### Improvements tested (kept only if they helped on games the tuning never saw)
 

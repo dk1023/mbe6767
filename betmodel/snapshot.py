@@ -595,9 +595,10 @@ def build_html(res: engine.RunResult, build: str | None = None) -> str:
                           onclick="OSRun.tap()", title="Run the model on GitHub now (about 4 minutes)") if rp else None
     if rp:
         stale = tags.div(tags.div(
-            "Prices and injuries are as of the model run, which happens by itself every 2 hours. Scores update live "
-            "from ESPN while this page is open; results and the tracker update every 30 minutes. Tap Run for fresh "
-            "prices now. ", tags.button("Run options", type="button", class_="oslink", onclick="OSRun.sheet()")),
+            "Prices and injuries are as of the model run, which happens by itself every 2 hours, and every 30 minutes "
+            "in the 3 hours before a kickoff (lineups and inactives). Scores update live from ESPN while this page is "
+            "open; results and the tracker update every 30 minutes. Tap Run for fresh prices now. ",
+            tags.button("Run options", type="button", class_="oslink", onclick="OSRun.sheet()")),
             class_="stale")
     else:
         stale = tags.div("Snapshot: prices and injuries are as of the model run and may have moved. Scores update live "

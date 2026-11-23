@@ -483,9 +483,13 @@ def _site_status(rp: str | None) -> dict | None:
         return None
 
 
+PREGAME_H = 3  # scheduled updates this close to a kickoff are full model runs
+
+
 def plan(kind: str, event: str = "") -> dict:
-    """What this workflow run should do. Runs you start always go; a scheduled score update is skipped while no
-    game is live or waiting for a result (the page fetches live scores itself)."""
+    """What this workflow run should do. Runs you start always go. A scheduled score update becomes a full model
+    run when a game kicks off within PREGAME_H hours (confirmed lineups, NFL inactives and late price moves come
+    out then), and is skipped while no game is live or waiting for a result (the page fetches live scores itself)."""
     now = datetime.now(timezone.utc)
     kind = kind if kind in KINDS else "run"
     out = {"kind": kind, "go": "true", "day": now.strftime("%Y-%m-%d"), "why": "started by hand" if event != "schedule"
@@ -495,15 +499,20 @@ def plan(kind: str, event: str = "") -> dict:
         if st is None:
             out["why"] = "no published page to check"
         else:
-            due = 0
+            due = soon = 0
             for g in st.get("games") or []:
                 ko = _parse_utc(g.get("ko"))
                 if g.get("st") == "post" or ko is None:
                     continue
                 if g.get("st") == "in" or ko - timedelta(minutes=15) <= now <= ko + timedelta(hours=6):
                     due += 1
+                if g.get("st") != "in" and now < ko <= now + timedelta(hours=PREGAME_H):
+                    soon += 1
             last = _parse_utc(st.get("built"))
-            if due:
+            if soon:
+                out.update(kind="run", why=f"{soon} game(s) kick off within {PREGAME_H} hours: full run for confirmed "
+                                           "lineups, inactives and fresh prices")
+            elif due:
                 out["why"] = f"{due} game(s) live or waiting for a result"
             elif last is None or now - last > timedelta(hours=8):
                 out["why"] = "the last update was over 8 hours ago"
@@ -743,8 +752,9 @@ def code_files() -> dict[str, bytes]:
     return out
 
 
-def _commit_files(rp: str, tk: str, branch: str, files: dict[str, bytes], message: str) -> str:
-    """One commit on `branch` adding / updating these files (the rest of the repo stays as it is)."""
+def _commit_files(rp: str, tk: str, branch: str, files: dict[str, bytes], message: str) -> str | None:
+    """One commit on `branch` adding / updating these files (the rest of the repo stays as it is).
+    Returns the new commit, or None when nothing changed."""
     try:
         head = _gh("GET", f"/repos/{rp}/git/ref/heads/{branch}", tk)["object"]["sha"]
         base_tree = _gh("GET", f"/repos/{rp}/git/commits/{head}", tk)["tree"]["sha"]
@@ -754,6 +764,8 @@ def _commit_files(rp: str, tk: str, branch: str, files: dict[str, bytes], messag
                        {"content": base64.b64encode(data).decode(), "encoding": "base64"})
             entries.append({"path": path, "mode": "100644", "type": "blob", "sha": blob["sha"]})
         tree = _gh("POST", f"/repos/{rp}/git/trees", tk, {"base_tree": base_tree, "tree": entries})
+        if tree["sha"] == base_tree:
+            return None
         commit = _gh("POST", f"/repos/{rp}/git/commits", tk, {"message": message, "tree": tree["sha"], "parents": [head]})
         _gh("PATCH", f"/repos/{rp}/git/refs/heads/{branch}", tk, {"sha": commit["sha"]})
     except GitHubError as e:
@@ -821,7 +833,7 @@ def setup(dry_run: bool = False, start: bool = True, force: bool = False) -> Non
         print(f"2/4 Data uploaded to the '{TAG}' release")
         branch = _branch(rp, tk)
         sha = _commit_files(rp, tk, branch, files, "OddSea: run the model on GitHub (code, workflow and settings)")
-        print(f"3/4 Code uploaded ({branch} @ {sha[:7]})")
+        print(f"3/4 Code uploaded ({branch} @ {sha[:7]})" if sha else f"3/4 Code on {branch} is already up to date")
     finally:
         shutil.rmtree(td, ignore_errors=True)
     _set_config(cloud=True)
@@ -838,6 +850,15 @@ def setup(dry_run: bool = False, start: bool = True, force: bool = False) -> Non
         print("Starting the first run on GitHub (about 5 minutes)...")
         trigger("run", lambda f, m: print(f"\r  {m:<96}", end="", flush=True))
         print(f"\nDone. Page: {page_url(rp)}")
+
+
+def push_code(message: str = "Update OddSea") -> str:
+    """Upload this PC's code (and settings.json) to GitHub, so the runs there use it. Checked for keys first."""
+    rp, tk = repo(), token()
+    files = code_files()
+    _scan(files, _secret_bits())
+    sha = _commit_files(rp, tk, _branch(rp, tk), files, message)
+    return f"Code uploaded ({sha[:7]}); the next run on GitHub uses it." if sha else "GitHub already has this code."
 
 
 # ============================================================================ command line
@@ -857,6 +878,8 @@ def main(argv=None) -> None:
                  ("history", "rebuild the model history on GitHub and wait")):
         sp.add_parser(k, help=h)
     sp.add_parser("pull", help="copy the newest results from GitHub to this PC")
+    p = sp.add_parser("code", help="upload this PC's code changes to GitHub (checked for keys first)")
+    p.add_argument("-m", "--message", default="Update OddSea")
     sp.add_parser("status", help="what GitHub is doing")
     sp.add_parser("on", help="the app's Run buttons use GitHub")
     sp.add_parser("off", help="the app's Run buttons run on this PC")
@@ -872,6 +895,8 @@ def main(argv=None) -> None:
         print("\nDone; the results are on this PC and the page.")
     elif a.cmd == "pull":
         print("Copied the newest results from GitHub." if pull() else "This PC already has the newest results.")
+    elif a.cmd == "code":
+        print(push_code(a.message))
     elif a.cmd == "status":
         status()
     elif a.cmd in ("on", "off"):

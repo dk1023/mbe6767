@@ -351,6 +351,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 .headline .v { font-size: 1.2rem; font-weight: 800; margin-top: 3px; letter-spacing: -.015em; font-variant-numeric: tabular-nums; }
 .headline .vp { display: inline-block; margin-left: 7px; padding: 1px 8px; border-radius: 999px; vertical-align: 3px;
   background: rgba(255,255,255,.12); color: var(--hero-sub); font-size: .7rem; font-weight: 700; letter-spacing: 0; }
+.headline .vsub { color: var(--hero-muted); font-size: .74rem; font-weight: 600; margin-top: 2px; }
 .headline .sub { color: var(--hero-sub); margin-top: 10px; font-size: .87rem; line-height: 1.5; }
 .verdict { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 12px;
   padding: 9px 12px; margin-top: 12px; font-size: .87rem; }

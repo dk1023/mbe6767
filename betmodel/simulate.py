@@ -276,13 +276,24 @@ def score_grid(lh: float, la: float, rho: float = -0.05, max_goals: int = 10) ->
 
 
 @lru_cache(maxsize=4096)
-def soccer(lh: float, la: float, rho: float = -0.05, key: str = "", n: int = N_SIMS) -> dict:
-    """Simulate a match n times from the model's expected goals (lh, la)."""
-    return _stored(f"sim:{VERSION}:soccer:{key}:{lh}:{la}:{rho}:{n}", lambda: _soccer(lh, la, rho, key, n))
+def soccer(lh: float, la: float, rho: float = -0.05, key: str = "", n: int = N_SIMS,
+           target: tuple | None = None) -> dict:
+    """Simulate a match n times from the model's expected goals (lh, la). target = (home, draw, away) chances
+    to match, e.g. the model + market blend: the score grid is rescaled by result first, as the pricing does."""
+    tag = "" if target is None else ":" + ",".join(f"{float(x):.4f}" for x in target)
+    return _stored(f"sim:{VERSION}:soccer:{key}:{lh}:{la}:{rho}:{n}{tag}", lambda: _soccer(lh, la, rho, key, n, target))
 
 
-def _soccer(lh: float, la: float, rho: float, key: str, n: int) -> dict:
+def _soccer(lh: float, la: float, rho: float, key: str, n: int, target: tuple | None = None) -> dict:
     m = score_grid(lh, la, rho)
+    if target is not None:
+        i, j = np.indices(m.shape)
+        diff = i - j  # home goals minus away goals
+        cur = np.array([m[diff > 0].sum(), m[diff == 0].sum(), m[diff < 0].sum()])
+        t = np.asarray(target, float)
+        if np.all(cur > 0) and np.all(t > 0):
+            m = m * np.where(diff > 0, t[0] / cur[0], np.where(diff == 0, t[1] / cur[1], t[2] / cur[2]))
+            m = m / m.sum()
     rng = np.random.default_rng(_seed("soccer", key, round(lh, 3), round(la, 3)))
     k = rng.choice(m.size, size=n, p=m.ravel())
     h, a = k // m.shape[1], k % m.shape[1]

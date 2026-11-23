@@ -1,6 +1,7 @@
 # OddSea on GitHub: runs the model here, so it works with the PC off.
 #   every 2 hours       full model run (fresh DraftKings + Kalshi prices, new picks)
-#   every 30 minutes    scores, grading and results (skipped while no game is live or waiting for a result)
+#   every 30 minutes    scores, grading and results (skipped while no game is live or waiting for a result);
+#                       a full model run instead when a game kicks off within 3 hours (lineups, inactives, prices)
 #   any time            the Run button on the phone page or in the PC app, or Actions > OddSea > Run workflow
 # The data travels between runs as a file on the "oddsea-data" release; each run publishes the page to GitHub Pages.
 name: OddSea

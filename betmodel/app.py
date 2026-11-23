@@ -271,11 +271,15 @@ def sim_section(d):
                           "spread thin, and 3-point games like 20-17 top the list for almost any matchup. "
                           if d["sport"] == "nfl" else
                           "The prediction is the outcome that came up most often, with its most common score. ") +
-                         ("Win chances follow the model's margin distribution, the one behind its spreads; for "
-                          "favourites that runs a point or a few below the moneyline win probability above, a gap "
-                          "that's in the model itself. Its spread is the model's projected margin."
+                         ("The games are centred on the model blended with the market (spreads 10% model / 90% "
+                          "market, totals 15% / 85%), the same numbers the prices use; that mix matched the books' "
+                          "closing line on 2,388 past games, where the model alone missed by 0.2 points more. Win "
+                          "chances follow the model's margin distribution; for favourites that runs a point or a few "
+                          "below the moneyline win probability above."
                           if d["sport"] == "nfl" else
-                          "The chances match the model's exact numbers to within about a fifth of a point."),
+                          "The results are matched to the model blended with the market (95% market when a sharp "
+                          "price exists), the same numbers the prices use; that mix called 54.4% of 2,614 past "
+                          "matches right, the model alone 53.3%."),
                          class_="note"),
                   class_="sect")
 
@@ -283,16 +287,23 @@ def sim_section(d):
 KIND_LABEL = {"rec": "RECOMMENDED", "lean": "LEAN", "neg": "LEAST-BAD"}
 
 
-def game_prediction(d):
-    """The model's call after simulating the game 10,000 times: the outcome that came up most often, and its most
-    common final score (soccer: home win / draw / away win and scoreline)."""
+def game_prediction(d, blend: bool = True):
+    """The call after simulating the game 100,000 times: the outcome that came up most often, and its most common
+    final score (soccer: home win / draw / away win and scoreline). blend=True (the headline): the model blended
+    with the market, the mix the prices use, which matched the books' closing line on past games and beat the
+    model alone; blend=False: the model alone. Same numbers and seed as the Results page."""
     from . import results as R
     names = {d["home"]: team_meta(d, "home")["name"], d["away"]: team_meta(d, "away")["name"]}
     key = pd.Timestamp(d["date"]).strftime("%Y-%m-%d")  # same seed as the Results page uses for this game
     if d["sport"] == "nfl":
-        return R.predict_nfl(d["home"], d["away"], d.get("mu_model"), d.get("tau_model"), d.get("win_model"), names,
-                             key=key)
-    return R.predict_soccer(d["home"], d["away"], d.get("p_model"), d.get("xg"), names, key=key)
+        mu, tau, p = d.get("mu_model"), d.get("tau_model"), d.get("win_model")
+        if blend:
+            mu, tau, p = R.blend_nfl(mu, tau, p, d.get("mu_market"), d.get("tau_market"), d.get("win_market"))
+        return R.predict_nfl(d["home"], d["away"], mu, tau, p, names, key=key)
+    p3, target = d.get("p_model"), None
+    if blend:
+        p3, target = R.blend_soccer(p3, d.get("sharp_1x2"))
+    return R.predict_soccer(d["home"], d["away"], p3, d.get("xg"), names, key=key, target=target)
 
 
 def pred_text(d, with_prob=True):
@@ -303,12 +314,19 @@ def pred_text(d, with_prob=True):
 
 
 def pred_value(d):
-    """The headline's prediction: the call in big type, its chance in a small pill."""
+    """The headline's prediction: the call in big type, its chance in a small pill, the model alone underneath."""
     p = game_prediction(d)
     if p is None:
         return ui.div("-", class_="v")
-    return ui.div(p["text"], ui.span(f"{p['prob']:.0%}", class_="vp") if p.get("prob") is not None else None,
-                  class_="v")
+    m = game_prediction(d, blend=False)
+    has_mkt = d.get("mu_market") is not None if d["sport"] == "nfl" else bool(d.get("sharp_1x2"))
+    if not has_mkt:
+        alone = ui.div("model alone (no sharp market price yet)", class_="vsub")
+    else:
+        alone = ui.div("model + market · " + (f"model alone: {m['text']}" if m and m["text"] != p["text"]
+                                              else "model alone: same"), class_="vsub")
+    return ui.div(ui.div(p["text"], ui.span(f"{p['prob']:.0%}", class_="vp") if p.get("prob") is not None else None,
+                         class_="v"), alone)
 
 
 def why_text(d, b, kind) -> str:
@@ -626,27 +644,32 @@ def nfl_detail(d, unit):
     if diff is not None:
         sub = (f"The model rates {H if diff > 0 else A} {abs(diff):.1f} points better than the books do."
                if abs(diff) >= 0.5 else "The model agrees with the books here.")
+    sl = sim_lines(d)
     head = ui.div(
-        ui.div(ui.div(ui.div("Model prediction", class_="k"), pred_value(d)),
+        ui.div(ui.div(ui.div("Prediction", class_="k"), pred_value(d)),
                (ui.div(ui.div("Simulated spread", class_="k"),
-                       ui.div(sim_lines(d)["spread"], ui.span(f"model {side_name(d, mu)}", class_="vp"), class_="v"))
-                if sim_lines(d) else
+                       ui.div(sl["spread"], ui.span(f"model {side_name(d, mu)}", class_="vp"), class_="v"))
+                if sl else
                 ui.div(ui.div("Model projection", class_="k"), ui.div(side_name(d, mu), class_="v"))),
                ui.div(ui.div("Sharp market (no vig)", class_="k"), ui.div(side_name(d, mk) if mk is not None else "-", class_="v")),
                ui.div(ui.div("Projected total", class_="k"),
-                      ui.div(f"{d['tau_model']:.1f}",
-                             ui.span(f"books {d['tau_market']:.1f}", class_="vp") if d.get("tau_market") else None,
+                      ui.div(f"{sl['total']:g}" if sl else f"{d['tau_model']:.1f}",
+                             ui.span(f"model {d['tau_model']:.1f}" + (f" · books {d['tau_market']:.1f}"
+                                                                      if d.get("tau_market") else ""), class_="vp"),
                              class_="v")),
                class_="row2"),
         ui.div(sub, class_="sub"), weather_line(d), verdict_nfl(d), class_="headline")
 
-    wm, wk = d["win_model"], d.get("win_market")
+    wm, wk, wf = d["win_model"], d.get("win_market"), d.get("win_fair")
     bars = ui.div(ui.h6("Win probability"),
                   ui.div("Model", class_="barlabel"),
                   prob_bar([(A, 1 - wm, "var(--c-away)"), (H, wm, "var(--c-home)")]),
                   *([ui.div("Books (no-vig)", class_="barlabel"),
                      prob_bar([(A, 1 - wk, "var(--c-away)"), (H, wk, "var(--c-home)")])]
-                    if wk is not None else []), class_="sect")
+                    if wk is not None else []),
+                  *([ui.div("Model + market (used for the prediction and the prices)", class_="barlabel"),
+                     prob_bar([(A, 1 - wf, "var(--c-away)"), (H, wf, "var(--c-home)")])]
+                    if wk is not None and wf is not None else []), class_="sect")
 
     rows_s, rows_t, rows_m = [], [], []
     for b in ordered_books(d["books"]):
@@ -718,7 +741,7 @@ def soccer_detail(d, unit):
     pm, pf, ps = d["p_model"], d["p_fair"], d.get("sharp_1x2")
     fav = max(range(3), key=lambda i: pm[i])
     head = ui.div(
-        ui.div(ui.div(ui.div("Model prediction", class_="k"), pred_value(d)),
+        ui.div(ui.div(ui.div("Prediction", class_="k"), pred_value(d)),
                ui.div(ui.div("Expected goals (model)", class_="k"), ui.div(f"{d['xg'][0]:.2f} - {d['xg'][1]:.2f}", class_="v")),
                ui.div(ui.div("Model", class_="k"), ui.div(f"{pct(pm[0])} / {pct(pm[1])} / {pct(pm[2])}", class_="v")),
                ui.div(ui.div("Books (no-vig)", class_="k"),
@@ -732,6 +755,9 @@ def soccer_detail(d, unit):
                   *([ui.div("Books (no-vig)", class_="barlabel"),
                      prob_bar([(H, ps[0], "var(--c-home)"), ("Draw", ps[1], "var(--c-draw)"),
                                (A, ps[2], "var(--c-away)")])] if ps else []),
+                  *([ui.div("Model + market (used for the prediction and the prices)", class_="barlabel"),
+                     prob_bar([(H, pf[0], "var(--c-home)"), ("Draw", pf[1], "var(--c-draw)"),
+                               (A, pf[2], "var(--c-away)")])] if ps and pf else []),
                   class_="sect")
     r1 = []
     for b in ordered_books(d["books1x2"]):

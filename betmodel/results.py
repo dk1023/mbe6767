@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from . import db
+from . import db, odds as O
 
 COMP_NAMES = {"NFL": "NFL", "EPL": "Premier League", "LALIGA": "La Liga", "SERIEA": "Serie A",
               "UCL": "Champions League", "UEL": "Europa League"}
@@ -120,16 +120,49 @@ def predict_nfl(home, away, mu, tau, p_home=None, names=None, key: str = "") -> 
             "text": f"{nm.get(winner, winner)} {max(h, a)}-{min(h, a)}"}
 
 
-def predict_soccer(home, away, p3, xg, names=None, rho: float = -0.05, key: str = "") -> dict | None:
-    """The model's call after simulating the match 10,000 times from its expected goals (simulate.soccer): the
-    result that came up most often (home win / draw / away win) and its most common scoreline."""
+def _ok(x) -> bool:
+    return x is not None and not pd.isna(x)
+
+
+def blend_weights() -> tuple[float, float, float]:
+    """Weight on the model when blended with the market (NFL spread, NFL total, soccer 1X2), from tuned.json:
+    the mixes the prices use, chosen in the backtests."""
+    from .slate import tuned
+    t = tuned()
+    return (t.get("nfl", {}).get("spread_blend_w", 0.1), t.get("nfl", {}).get("total_blend_w", 0.15),
+            t.get("soccer", {}).get("blend_w", 0.05))
+
+
+def blend_nfl(mu, tau, p, mk_mu, mk_tau, mk_p):
+    """The model's margin, total and home win chance blended with the market's (each kept as is without one).
+    On 2,388 past games the blend was as accurate as the closing line and clearly better than the model alone."""
+    ws, wt, _ = blend_weights()
+    mu_b = ws * float(mu) + (1 - ws) * float(mk_mu) if _ok(mu) and _ok(mk_mu) else mu
+    tau_b = wt * float(tau) + (1 - wt) * float(mk_tau) if _ok(tau) and _ok(mk_tau) else tau
+    p_b = float(O.pool([float(p), 1 - float(p)], [float(mk_p), 1 - float(mk_p)], ws)[0]) if _ok(p) and _ok(mk_p) else p
+    return mu_b, tau_b, p_b
+
+
+def blend_soccer(p3, m3):
+    """(home/draw/away chances blended with the market, target for the simulation or None without a market)."""
+    if p3 is None or not all(_ok(x) for x in p3) or m3 is None or not all(_ok(x) for x in m3):
+        return p3, None
+    pb = O.pool([float(x) for x in p3], [float(x) for x in m3], blend_weights()[2])
+    return [float(x) for x in pb], tuple(round(float(x), 4) for x in pb)
+
+
+def predict_soccer(home, away, p3, xg, names=None, rho: float = -0.05, key: str = "",
+                   target: tuple | None = None) -> dict | None:
+    """The call after simulating the match 100,000 times from the model's expected goals (simulate.soccer), its
+    results matched to `target` (the model + market blend) when given: the result that came up most often
+    (home win / draw / away win) and its most common scoreline."""
     if p3 is None or any(x is None or pd.isna(x) for x in p3):
         return None
     nm = names or {}
     s = None
     if xg is not None and all(x is not None and pd.notna(x) for x in xg):
         from . import simulate
-        s = simulate.soccer(round(float(xg[0]), 3), round(float(xg[1]), 3), rho, f"{home}|{away}|{key}")
+        s = simulate.soccer(round(float(xg[0]), 3), round(float(xg[1]), 3), rho, f"{home}|{away}|{key}", target=target)
     if s:
         res = _call(s, "HDA"[int(np.argmax(p3))])
         m = {"H": s["mode_home"], "D": s["mode_draw"], "A": s["mode_away"]}[res]
@@ -169,25 +202,26 @@ def best_bets() -> pd.DataFrame:
     d = d.sort_values(["prio", "id"]).drop_duplicates(["sport", "game_date", "home", "away"], keep="first")
     d["u1"] = np.where(d["status"] == "won", d["odds"] - 1, np.where(d["status"] == "lost", -1.0, 0.0))
     p = db.predictions()
+    cols = ["model_margin", "market_margin", "model_total", "market_total", "p_home", "p_draw", "p_away", "m_home",
+            "m_draw", "m_away", "xg_home", "xg_away", "home_score", "away_score"]
     if len(p):
-        d = d.merge(p[["sport", "home", "away", "game_date", "kickoff", "model_margin", "market_margin",
-                       "model_total", "p_home", "p_draw", "p_away", "m_home", "m_draw", "m_away", "xg_home", "xg_away",
-                       "home_score", "away_score"]],
+        d = d.merge(p[["sport", "home", "away", "game_date", "kickoff", *cols]],
                     on=["sport", "home", "away", "game_date"], how="left")
     else:
-        for c in ("model_margin", "market_margin", "model_total", "p_home", "p_draw", "p_away", "m_home", "m_draw",
-                  "m_away", "xg_home", "xg_away", "home_score", "away_score"):
+        for c in cols:
             d[c] = np.nan
     d = d.sort_values(["game_date", "id"]).reset_index(drop=True)
-    preds, hits = [], []
+    preds, hits, mhits = [], [], []
     for r in d.itertuples():
         hs, as_ = r.home_score, r.away_score
         if (pd.isna(hs) or pd.isna(as_)) and isinstance(r.score, str):  # fall back to the graded score text
             hs, as_ = _parse_score(r.sport, r.score)
+        graded = r.status in ("won", "lost", "push")
         pr = row_prediction(r)
         preds.append(pr)
-        hits.append(prediction_hit(pr, hs, as_) if r.status in ("won", "lost", "push") else None)
-    d["pred"], d["pred_hit"] = preds, hits
+        hits.append(prediction_hit(pr, hs, as_) if graded else None)
+        mhits.append(prediction_hit(row_prediction(r, blend=False), hs, as_) if graded else None)
+    d["pred"], d["pred_hit"], d["pred_model_hit"] = preds, hits, mhits
     return d
 
 
@@ -199,14 +233,23 @@ def _parse_score(sport, s):
     return (nums[1], nums[0]) if sport == "nfl" else (nums[0], nums[1])  # NFL text is 'AWAY a - HOME h'
 
 
-def row_prediction(r) -> dict | None:
+def row_prediction(r, blend: bool = True) -> dict | None:
+    """A stored game's prediction: the model blended with the market it saw before the game (the headline call),
+    or the model alone (blend=False). Same numbers and simulations as the game page."""
+    key = str(r.game_date)
     if r.sport == "nfl":
-        return predict_nfl(r.home, r.away, r.model_margin, r.model_total, r.p_home, key=str(r.game_date))
-    return predict_soccer(r.home, r.away, [r.p_home, r.p_draw, r.p_away], [r.xg_home, r.xg_away], key=str(r.game_date))
+        mu, tau, p = r.model_margin, r.model_total, r.p_home
+        if blend:
+            mu, tau, p = blend_nfl(mu, tau, p, r.market_margin, getattr(r, "market_total", None), r.m_home)
+        return predict_nfl(r.home, r.away, mu, tau, p, key=key)
+    p3, target = [r.p_home, r.p_draw, r.p_away], None
+    if blend:
+        p3, target = blend_soccer(p3, [r.m_home, r.m_draw, r.m_away])
+    return predict_soccer(r.home, r.away, p3, [r.xg_home, r.xg_away], key=key, target=target)
 
 
-def pred_record(d: pd.DataFrame) -> dict:
-    h = [x for x in d["pred_hit"] if x is not None] if len(d) else []
+def pred_record(d: pd.DataFrame, col: str = "pred_hit") -> dict:
+    h = [x for x in d[col] if x is not None] if len(d) and col in d else []
     w = sum(1 for x in h if x)
     return {"w": w, "l": len(h) - w, "n": len(h), "pct": w / len(h) if h else None}
 
@@ -253,13 +296,16 @@ def view(unit: float = 10.0, limit: int = 200):
 
     tot = bet_record(d)
     ptot = pred_record(d)
+    pmod = pred_record(d, "pred_model_hit")
     rec = bet_record(d[d["source"] == "auto"])
     top = tags.div(
         tags.div(tags.h4("How the bets did"),
                  tags.div("Recommended bets are the ones worth money: DraftKings beats the sharp price (Kalshi, no vig) "
                           "by your minimum edge. Every other game shows the model's lean or least-bad bet, which "
                           "aren't expected to profit. Profit assumes exactly 1 unit on every bet. The prediction column "
-                          "is the model's own call on who wins (soccer: home win / draw / away win).", class_="note"),
+                          "is OddSea's call on who wins (soccer: home win / draw / away win): the model blended with "
+                          "the market it saw before the game, about 90% market, which matched the books' closing line "
+                          "on 5,000 past games. 'Model alone' is the model's own call.", class_="note"),
                  class_="rhead"),
         tags.div(kpi("Recommended bets", _rec_txt(rec) if rec["n"] else "-",
                      (f"{money(rec)} at 1u each" + (f" · {rec['open']} open" if rec["open"] else "")) if rec["n"]
@@ -270,7 +316,8 @@ def view(unit: float = 10.0, limit: int = 200):
                  kpi("1 unit on every game", money(tot), f"ROI {tot['roi']:+.1%} on {tot['n']} bets" if tot["roi"] is not None else "",
                      tone=("pos" if tot["units"] >= 0 else "neg") if tot["n"] else None),
                  kpi("Predictions right", f"{ptot['w']}-{ptot['l']}" if ptot["n"] else "-",
-                     f"{ptot['pct']:.0%} called the result" if ptot["pct"] is not None else ""),
+                     (f"{ptot['pct']:.0%} called the result" if ptot["pct"] is not None else "")
+                     + (f" · model alone {pmod['w']}-{pmod['l']}" if pmod["n"] else "")),
                  *[kpi(lbl, _rec_txt(r), f"{money(r)}") for sp, lbl in SPORTS
                    for r in [bet_record(d[d["sport"] == sp])] if r["n"]],
                  class_="rkpis"))

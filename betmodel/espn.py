@@ -125,10 +125,11 @@ def draftkings(c: dict) -> dict | None:
 
 
 def nfl_injuries(event_ids: list[str]) -> dict:
-    """{team_abbr: [{'player','pos','status'}]} from each game's ESPN summary (cached 1h)."""
+    """{team_abbr: [{'player','pos','status'}]} from each game's ESPN summary (cached 20 minutes, so the runs
+    every half hour before kickoff pick up the inactives list as soon as it's out)."""
     def one(eid):
         try:
-            return _get(f"{BASE}/football/nfl/summary?event={eid}", ttl_h=1.0)
+            return _get(f"{BASE}/football/nfl/summary?event={eid}", ttl_h=1 / 3)
         except Exception:
             return {}
     out = {}
