@@ -85,6 +85,9 @@ def run(progress=lambda frac, msg: None, cfg: dict | None = None, log_picks: boo
         print(f"  ! lineup model unavailable ({e}); using the injury list instead")
     progress(0.86, "Pricing soccer matches")
     srows, scands = slate.soccer_slate(sm, df, cfg["soccer_comps"], cfg["soccer_days"], av, cfg, details, lu_state)
+    n_carry = _carry_started(details, load_last())
+    if n_carry:
+        notes.append(f"Kept {n_carry} soccer game(s) under way or just finished, with their pre-kickoff numbers")
     _attach_espn(details, espn_games, sm.teams)
     progress(0.90, "Grading finished picks")
     settled = picks.settle(df, g, espn_games, _espn_index(details))
@@ -130,6 +133,36 @@ def run(progress=lambda frac, msg: None, cfg: dict | None = None, log_picks: boo
 
 
 LAST_RUN = Path(__file__).resolve().parent.parent / "data" / "last_run.pkl"
+CARRY_H = 8  # hours after kickoff a soccer game stays on the pages once the new slate no longer prices it
+
+
+def _ko_utc(d: dict):
+    e = d.get("espn") or {}
+    t = e.get("date_utc") if e.get("date_utc") is not None else d.get("kickoff")
+    if t is None or (not isinstance(t, str) and pd.isna(t)):
+        return None
+    t = pd.Timestamp(t)
+    return t.tz_convert("UTC").tz_localize(None) if t.tzinfo is not None else t
+
+
+def _carry_started(details: list, prev, hours: float = CARRY_H) -> int:
+    """A soccer game drops out of the new slate once it kicks off (the slate prices only games still to start).
+    Keep it from the previous run, with the numbers and bet the model had before kickoff, until `hours` after
+    kickoff, so the pages show it live and then final. (NFL games stay in their week's slate anyway.)"""
+    if prev is None:
+        return 0
+    have = {(d["sport"], d["home"], d["away"]) for d in details}
+    now = pd.Timestamp.now(tz="UTC").tz_localize(None)
+    n = 0
+    for d in prev.games:
+        if d.get("sport") != "soccer" or (d["sport"], d["home"], d["away"]) in have:
+            continue
+        ko = _ko_utc(d)
+        if ko is not None and now - pd.Timedelta(hours=hours) <= ko <= now:
+            details.append(d)
+            have.add((d["sport"], d["home"], d["away"]))
+            n += 1
+    return n
 
 
 def _save_last(res: RunResult) -> None:
