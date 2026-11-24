@@ -367,7 +367,7 @@ CLOUD_JS = r"""
     s.innerHTML = k ? (
       '<h4>Run OddSea on GitHub</h4>' +
       '<p class="note">A key is saved on this phone. <b>Run</b> starts a full model run (fresh DraftKings and Kalshi ' +
-      'prices, about 4 minutes) and this page reloads when it’s done. It also runs by itself every 2 hours, and ' +
+      'prices, about a minute) and this page reloads when it’s done. It also runs by itself every 2 hours, and ' +
       'scores and results update every 30 minutes.</p>' +
       '<div class="osbtns"><button class="btn btn-primary" data-k="run">Run the model now</button>' +
       '<button class="btn btn-default" data-k="scores">Update scores now</button></div>' +
@@ -375,7 +375,7 @@ CLOUD_JS = r"""
       '<button class="btn btn-default" data-x="close">Close</button></div>'
     ) : (
       '<h4>Run OddSea from this page</h4>' +
-      '<p class="note">Tapping <b>Run</b> starts the model on GitHub (about 4 minutes) and reloads this page with the ' +
+      '<p class="note">Tapping <b>Run</b> starts the model on GitHub (about a minute) and reloads this page with the ' +
       'results. It needs a GitHub key saved on this phone, once:</p>' +
       '<ol><li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">' +
       'GitHub › new fine-grained key</a> (signed in as ' + esc(who[0]) + ').</li>' +
@@ -592,7 +592,7 @@ def build_html(res: engine.RunResult, build: str | None = None) -> str:
     sc_txt = sc.strftime("%a %I:%M %p").replace(" 0", " ") if sc is not None else "as of the run"
     nrec = len(res.recommended)
     run_btn = tags.button(HTML(PLAY_SVG), tags.span("Run"), id="osrun", type="button", class_="run-btn",
-                          onclick="OSRun.tap()", title="Run the model on GitHub now (about 4 minutes)") if rp else None
+                          onclick="OSRun.tap()", title="Run the model on GitHub now (about a minute)") if rp else None
     if rp:
         stale = tags.div(tags.div(
             "Prices and injuries are as of the model run, which happens by itself every 2 hours, and every 30 minutes "

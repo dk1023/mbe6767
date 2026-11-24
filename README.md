@@ -94,7 +94,7 @@ repo. Once it's set up:
   minutes in the 3 hours before any kickoff**, when confirmed soccer lineups, NFL inactives and late price moves
   come out. **Scores, grading and results update every 30 minutes** while games are on. The PC can be off.
 - **The phone page has a Run button.** One tap starts a full run; a card shows each step and the page
-  reloads with the new results in about 4 minutes. The first time, it asks for a GitHub key, which it keeps
+  reloads with the new results in about a minute. The first time, it asks for a GitHub key, which it keeps
   on that phone only. Make one at github.com/settings/personal-access-tokens/new: Only select repositories →
   your repo, Permissions → **Actions: Read and write**, nothing else. *Run options* (in the yellow banner)
   has Update scores now and Remove the key.

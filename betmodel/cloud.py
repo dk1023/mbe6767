@@ -865,7 +865,7 @@ def setup(dry_run: bool = False, start: bool = True, force: bool = False) -> Non
                 if e.status != 404:
                     raise
                 time.sleep(3)
-        print("Starting the first run on GitHub (about 5 minutes)...")
+        print("Starting the first run on GitHub (a minute or two)...")
         trigger("run", lambda f, m: print(f"\r  {m:<96}", end="", flush=True))
         print(f"\nDone. Page: {page_url(rp)}")
 
