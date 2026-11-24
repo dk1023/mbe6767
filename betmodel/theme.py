@@ -451,6 +451,22 @@ table.rtable tr.won td:first-child { box-shadow: inset 3px 0 0 var(--good); }
 table.rtable tr.lost td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
 table.rtable tr.push td:first-child { box-shadow: inset 3px 0 0 var(--line-2); }
 table.rtable td small { display: block; color: var(--muted); }
+/* pick tracker: on a phone each bet is a card with labelled lines instead of a wide table row */
+@media (max-width: 600px) {
+  table.trk thead { display: none; }
+  table.trk.rtable, table.trk, table.trk tbody, table.trk tr { display: block; width: 100%; min-width: 0 !important; }
+  table.trk td { white-space: normal !important; }
+  table.trk tr { border: 1px solid var(--line); border-radius: 14px; margin: 0 0 10px; padding: 6px 12px;
+    background: var(--surface-2); }
+  table.trk tr.won { background: var(--good-row); border-left: 4px solid var(--good); }
+  table.trk tr.lost { background: var(--bad-row); border-left: 4px solid var(--bad); }
+  table.trk tr.push { border-left: 4px solid var(--line-2); }
+  table.trk tr td, table.trk tbody tr:hover td { display: flex; justify-content: space-between; align-items: baseline;
+    gap: 14px; padding: 5px 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+  table.trk td::before { content: attr(data-label); flex: none; color: var(--muted); font-size: .68rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .07em; }
+  table.trk td .cv { text-align: right; min-width: 0; }
+}
 .res { display: inline-block; font-weight: 800; font-size: .68rem; letter-spacing: .05em; border-radius: 999px; padding: 2px 9px; line-height: 1.5; }
 .res.won { background: var(--hit); color: #fff; } .res.lost { background: var(--miss); color: #fff; }
 .res.push { background: var(--surface-3); color: var(--ink-2); }

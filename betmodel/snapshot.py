@@ -518,58 +518,18 @@ def build_html(res: engine.RunResult, build: str | None = None) -> str:
         "No bets cleared the minimum edge on this run. The model's best bet on every game is below.", class_="empty")
     bets = tags.div(bets, A.all_bets_table(games, lambda i, d: f"openGame({i})", unit, res.ran_at))
 
-    # tracker (recommended / hand-logged bets; leans shown separately below)
-    from . import picks as PK
-    allp = db.picks()
-    d = PK.main_picks(allp)
-    s = d[d["status"].isin(["won", "lost", "push"])]
-    rec = f"{(s.status == 'won').sum()}-{(s.status == 'lost').sum()}-{(s.status == 'push').sum()}" if len(s) else "-"
-    prof = f"${s.pnl.sum():+,.2f} ({s.pnl.sum() / unit:+.1f}u)" if len(s) else "-"
-    roi = f"{s.pnl.sum() / s.stake.sum():+.1%}" if len(s) and s.stake.sum() else "-"
-    c = s.loc[s["market"].isin(["1X2", "OU25", "ML"]), "clv"].dropna()
-    kpis = tags.div(*[tags.div(tags.div(k, class_="k"), tags.div(v, class_="v"), class_="kpi") for k, v in
-                      [("Record", rec), ("Profit", prof), ("ROI", roi), ("Avg CLV", f"{c.mean():+.1%}" if len(c) else "-")]],
-                    class_="kpis")
-    rows = []
-    for x in d.sort_values("id", ascending=False).head(40).to_dict("records"):
-        rows.append(tags.tr(tags.td(pd.Timestamp(x["game_date"]).strftime("%d %b")),
-                            tags.td(f"{x['away']} @ {x['home']}" if x["sport"] == "nfl" else f"{x['home']} v {x['away']}"),
-                            tags.td(engine.describe_bet(x)), tags.td(A.amer(x["odds"])),
-                            tags.td(f"{x['stake'] / unit:g}u"), tags.td(x["status"]),
-                            tags.td(f"${x['pnl']:+,.2f}" if pd.notna(x["pnl"]) else "")))
-    lk = []
-    for src, title in (("lean", "Leans (edge > 0, under the minimum)"), ("leastbad", "Least-bad (most likely outcome)")):
-        sm = PK.summary(allp[allp["source"] == src]) if len(allp) else {"n": 0, "open": 0}
-        v = (f"{sm['record']} · {sm['pnl'] / unit:+.1f}u · ROI {sm['roi']:+.1%}" if sm.get("record")
-             else f"{sm['open']} open, none graded")
-        lk.append(tags.div(tags.div(title, class_="k"), tags.div(v, class_="v", style="font-size:1rem"), class_="kpi"))
-    lrows = []
-    for x in PK.lean_picks(allp).sort_values("id", ascending=False).head(40).to_dict("records") if len(allp) else []:
-        lrows.append(tags.tr(tags.td(pd.Timestamp(x["game_date"]).strftime("%d %b")),
-                             tags.td(tags.span("LEAN" if x["source"] == "lean" else "LEAST-BAD",
-                                               class_=f"kchip {'lean' if x['source'] == 'lean' else 'neg'}")),
-                             tags.td(f"{x['away']} @ {x['home']}" if x["sport"] == "nfl" else f"{x['home']} v {x['away']}"),
-                             tags.td(engine.describe_bet(x)), tags.td(A.amer(x["odds"])),
-                             tags.td(f"{x['edge']:+.1%}" if pd.notna(x["edge"]) else ""), tags.td(x["status"]),
-                             tags.td(f"${x['pnl']:+,.2f}" if pd.notna(x["pnl"]) else "")))
-    leans_sec = tags.div(
-        tags.h5("The model's best bet on every other game", style="margin-top:22px"),
-        tags.div("Tracked at a notional 0.5u each; not included in the record above.", class_="note"),
-        tags.div(*lk, class_="kpis"),
-        tags.table(tags.thead(tags.tr(*[tags.th(h) for h in ["Date", "", "Match", "Bet", "Odds", "Edge", "Status", "P/L"]])),
-                   tags.tbody(*lrows), class_="bk") if lrows else None)
+    # tracker: only the bets that cleared the edge (the same view as the PC app's Pick tracker)
+    from . import tracker as TR
+    tracker = TR.view(unit, games, slate.user_config().get("min_edge"))
     try:
         from . import pricelog
         price_sec = pricelog.view()
     except Exception:
         price_sec = None
-    tracker = tags.div(kpis, tags.table(
-        tags.thead(tags.tr(*[tags.th(h) for h in ["Date", "Match", "Bet", "Odds", "Units", "Status", "P/L"]])),
-        tags.tbody(*rows), class_="bk") if rows else tags.div("No picks yet.", class_="empty"), leans_sec, price_sec)
 
-    # results: model vs books vs actual
+    # results: model vs books vs actual (with the leans / least-bad picks and the price log)
     from . import results as R
-    results_sec = R.view(unit, limit=80)
+    results_sec = tags.div(R.view(unit, limit=80), price_sec)
 
     # model history: every past game predicted vs what happened
     from . import history as H

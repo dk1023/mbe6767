@@ -273,20 +273,22 @@ Everything is cached under `data/`. The local SQLite database is `data/betmodel.
 
 ## Pick tracking
 
-Every pick is stored with its price, book, model probability, edge and stake. After the game
-it is graded automatically:
+**The Pick tracker shows only the bets that cleared your edge**: recommended bets (and any you log yourself).
+Same view in the PC app and on the phone page:
 
-- **Result and profit/loss**, with pushes handled
-- **Closing-line value (CLV)**: your price against the sharp close (soccer: Pinnacle/Betfair;
-  NFL: closing spread/total/moneyline). This is the number to watch. Over a few dozen bets,
-  wins and losses are mostly luck, but consistently beating the close means a real edge.
-- The report splits results by sport, market and price source (DK/FD vs. proxy).
+- **Record, profit, ROI**, and **how many beat the closing price** (CLV: your price against Kalshi's last
+  price before kickoff, or the books' closing line when Kalshi had none). This is the number to watch. Over a
+  few dozen bets, wins and losses are mostly luck, but prices that keep beating the close mean a real edge.
+- **Open bets**: what's riding now, the stake, the edge, and the price to take it at (or better).
+- **Settled**: every graded bet, newest first (on a phone, one card per bet).
 
-**The model's best bet on every other game** is tracked too, separately, at a notional 0.5 unit:
-*leans* (positive edge, below your minimum) and *least-bad* bets (every price is negative EV; the
-side the model dislikes least). Each Run model before kickoff replaces a game's entry with the latest
-best bet and price, so there is one per game. They are graded like everything else but never
-counted in the main record. The Pick tracker shows their record, profit, ROI and CLV in their own section.
+Every pick is stored with its price, book, model probability, edge and stake, and graded automatically after
+the game, pushes included.
+
+**The model's best bet on every other game** is still tracked, separately, at a notional 0.5 unit: *leans*
+(positive edge, below your minimum) and *least-bad* bets (every price is negative EV; the side the model
+dislikes least). They aren't expected to profit, so they're not in the Pick tracker: the Results page shows
+them for every finished game, with the price log under it.
 
 Log a bet you actually placed:
 ```powershell

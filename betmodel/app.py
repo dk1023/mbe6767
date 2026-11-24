@@ -835,16 +835,6 @@ AUTO_UPDATE_JS = """
 
 
 
-def value_boxes(prefix):
-    return ui.layout_columns(
-        ui.value_box("Record (W-L-P)", ui.output_text(f"{prefix}_record")),
-        ui.value_box("Profit", ui.output_text(f"{prefix}_profit")),
-        ui.value_box("ROI", ui.output_text(f"{prefix}_roi")),
-        ui.value_box("Avg closing-line value", ui.output_text(f"{prefix}_clv")),
-        col_widths={"sm": (6, 6, 6, 6), "lg": (3, 3, 3, 3)},
-    )
-
-
 app_ui = ui.page_navbar(
     ui.nav_panel(
         "Games",
@@ -870,6 +860,7 @@ app_ui = ui.page_navbar(
         ui.div("Finished games: the model's bet on each one and whether it hit. Updated by either button - the "
                "free score update is enough.", class_="pagehint"),
         ui.output_ui("results_view"),
+        ui.output_ui("pricelog_view"),
         value="results",
     ),
     ui.nav_panel(
@@ -887,17 +878,9 @@ app_ui = ui.page_navbar(
     ),
     ui.nav_panel(
         "Pick tracker",
-        value_boxes("trk"),
         ui.div(ui.input_action_button("grade", "Grade finished games"), ui.output_text("grade_status"),
                class_="statusline", style="margin-top:14px"),
-        ui.output_data_frame("picks_table"),
-        ui.div("Closing-line value (CLV) compares your price with the sharp closing price. 'CLV Kalshi' uses Kalshi's "
-               "last price before kickoff: expected profit per $1 at that price, available right after kickoff and "
-               "for every competition. Positive CLV over many bets is the best sign of a real edge; a few dozen "
-               "results are mostly luck.", class_="note"),
-        ui.output_ui("lean_summary"),
-        ui.output_data_frame("leans_table"),
-        ui.output_ui("pricelog_view"),
+        ui.output_ui("tracker_view"),
         value="tracker",
     ),
     ui.nav_panel(
@@ -1281,58 +1264,14 @@ def server(input, output, session):
             hist_tick.set(hist_tick() + 1)
             ui.notification_show(f"History built: {n:,} games", duration=6)
 
-    # ---- tracker
-    def all_picks_df():
-        tracker_tick()
-        return db.picks()
-
-    def picks_df():  # recommended + hand-logged bets only
-        from . import picks as PK
-        return PK.main_picks(all_picks_df())
-
+    # ---- tracker: only the bets that cleared the edge (tracker.py, the same view as the phone page)
     @render.ui
-    def lean_summary():
-        from . import picks as PK
-        d = all_picks_df()
-        unit = slate.user_config().get("unit", 10)
-        boxes = []
-        for src, title in (("lean", "Leans (edge > 0, under the minimum)"), ("leastbad", "Least-bad (most likely outcome)")):
-            sm = PK.summary(d[d["source"] == src]) if len(d) else {"n": 0, "open": 0}
-            if sm.get("record"):
-                val = f"{sm['record']}  ·  {sm['pnl'] / unit:+.1f}u  ·  ROI {sm['roi']:+.1%}"
-                kk = d.loc[d["source"] == src, "kclv"].dropna() if "kclv" in d else []
-                sub = f"CLV {sm['clv']}" + (f" · vs Kalshi {kk.mean():+.1%}" if len(kk) else "") + f" · {sm['open']} open"
-            else:
-                val, sub = "-", f"{sm['open']} open, none graded yet"
-            boxes.append(ui.value_box(title, val, ui.div(sub, style="font-size:.85rem")))
-        return ui.div(ui.h5("The model's best bet on every other game", style="margin-top:26px"),
-                      ui.div("Tracked at a notional 0.5u each so you can see whether the model's small edges hold up. "
-                             "Not included in the record above.", class_="note"),
-                      ui.layout_columns(*boxes, col_widths={"sm": (12, 12), "lg": (6, 6)}))
-
-    @render.data_frame
-    def leans_table():
-        from . import picks as PK
-        d = PK.lean_picks(all_picks_df())
-        if d.empty:
-            return render.DataGrid(pd.DataFrame({"": ["No leans yet - they're logged on the next Run model."]}))
-        recs = d.to_dict("records")
-        t = pd.DataFrame({
-            "date": [pd.Timestamp(x["game_date"]).strftime("%a %d %b") for x in recs],
-            "type": [KIND_LABEL["lean" if x["source"] == "lean" else "neg"] for x in recs],
-            "match": [f"{x['away']} @ {x['home']}" if x["sport"] == "nfl" else f"{x['home']} v {x['away']}" for x in recs],
-            "bet": [engine.describe_bet(x) for x in recs],
-            "odds": [amer(x["odds"]) for x in recs],
-            "book": [BOOKS.get(x["book"], x["book"]) for x in recs],
-            "edge": [f"{x['edge']:+.1%}" if pd.notna(x["edge"]) else "" for x in recs],
-            "status": [x["status"] for x in recs],
-            "score": [x["score"] or "" for x in recs],
-            "P/L": [f"${x['pnl']:+,.2f}" if pd.notna(x["pnl"]) else "" for x in recs],
-            "CLV": [("" if pd.isna(x["clv"]) else f"{x['clv']:+.1%}" if x["market"] in ("1X2", "OU25", "ML")
-                     else f"{x['clv']:+.1f} pts") for x in recs],
-            "CLV Kalshi": ["" if pd.isna(x.get("kclv")) else f"{x['kclv']:+.1%}" for x in recs],
-        }).iloc[::-1]
-        return render.DataGrid(t, filters=True, width="100%")
+    def tracker_view():
+        tracker_tick()
+        from . import tracker as TR
+        r = result()
+        c = slate.user_config()
+        return TR.view(c.get("unit", 10), r.games if r else None, c.get("min_edge"))
 
     @render.ui
     def pricelog_view():
@@ -1342,65 +1281,6 @@ def server(input, output, session):
             return pricelog.view()
         except Exception as e:
             return ui.div(f"Price log unavailable: {e}", class_="note")
-
-    def settled():
-        d = picks_df()
-        return d[d["status"].isin(["won", "lost", "push"])]
-
-    @render.text
-    def trk_record():
-        s = settled()
-        return f"{(s.status == 'won').sum()}-{(s.status == 'lost').sum()}-{(s.status == 'push').sum()}" if len(s) else "-"
-
-    @render.text
-    def trk_profit():
-        s = settled()
-        if not len(s):
-            return "-"
-        unit = slate.user_config().get("unit", 10)
-        return f"${s.pnl.sum():+,.2f} ({s.pnl.sum() / unit:+.1f}u)"
-
-    @render.text
-    def trk_roi():
-        s = settled()
-        return f"{s.pnl.sum() / s.stake.sum():+.1%}" if len(s) and s.stake.sum() else "-"
-
-    @render.text
-    def trk_clv():
-        k = picks_df()["kclv"].dropna() if "kclv" in picks_df() else []
-        if len(k):  # vs Kalshi's last pre-kickoff price: the sharp close, same scale for every market
-            return f"{k.mean():+.1%} vs Kalshi ({len(k)} bet{'s' if len(k) != 1 else ''})"
-        s = settled()
-        c = s.loc[s["market"].isin(["1X2", "OU25", "ML"]), "clv"].dropna()
-        pts = s.loc[s["market"].isin(["SPREAD", "TOTAL"]), "clv"].dropna()
-        parts = ([f"{c.mean():+.1%}"] if len(c) else []) + ([f"{pts.mean():+.1f} pts"] if len(pts) else [])
-        return " / ".join(parts) or "-"
-
-    @render.data_frame
-    def picks_table():
-        d = picks_df()
-        if d.empty:
-            return render.DataGrid(pd.DataFrame({"": ["No picks yet - press Run model."]}))
-        unit = slate.user_config().get("unit", 10)
-        recs = d.to_dict("records")
-        t = pd.DataFrame({
-            "date": [pd.Timestamp(x["game_date"]).strftime("%a %d %b") for x in recs],
-            "league": [COMP_NAMES.get(x["comp"], x["comp"]) for x in recs],
-            "match": [f"{x['away']} @ {x['home']}" if x["sport"] == "nfl" else f"{x['home']} v {x['away']}" for x in recs],
-            "bet": [engine.describe_bet(x) for x in recs],
-            "odds": [amer(x["odds"]) for x in recs],
-            "book": [BOOKS.get(x["book"], x["book"]) for x in recs],
-            "units": [round(x["stake"] / unit, 2) for x in recs],
-            "stake": [f"${x['stake']:,.2f}" for x in recs],
-            "edge": [f"{x['edge']:+.1%}" if pd.notna(x["edge"]) else "" for x in recs],
-            "status": [x["status"] for x in recs],
-            "score": [x["score"] or "" for x in recs],
-            "P/L": [f"${x['pnl']:+,.2f}" if pd.notna(x["pnl"]) else "" for x in recs],
-            "CLV": [("" if pd.isna(x["clv"]) else f"{x['clv']:+.1%}" if x["market"] in ("1X2", "OU25", "ML")
-                     else f"{x['clv']:+.1f} pts") for x in recs],
-            "CLV Kalshi": ["" if pd.isna(x.get("kclv")) else f"{x['kclv']:+.1%}" for x in recs],
-        }).iloc[::-1]
-        return render.DataGrid(t, filters=True, width="100%")
 
     @reactive.effect
     @reactive.event(input.grade)
