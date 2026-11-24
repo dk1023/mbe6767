@@ -40,6 +40,10 @@ def run(progress=lambda frac, msg: None, cfg: dict | None = None, log_picks: boo
     cfg = cfg or slate.user_config()
     tuned = slate.tuned()
     notes = []
+    if cfg.get("odds_source", "free") != "odds_api":  # Kalshi's price lists, fetched together in the background
+        import threading
+        from . import freeodds
+        threading.Thread(target=freeodds.warm, args=(["NFL"] + list(cfg["soccer_comps"]),), daemon=True).start()
     progress(0.04, "Loading NFL schedule, lines, QBs and injury reports")
     g = nfl.load_games()
     nm = nfl.NFLModel(nfl.NFLParams(**tuned.get("nfl", {}).get("params", {}))).fit(g)

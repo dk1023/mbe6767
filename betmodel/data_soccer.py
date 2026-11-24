@@ -59,6 +59,24 @@ def _get(url: str, dest: Path, max_age_h: float) -> bytes:
     return raw
 
 
+def _prefetch(items, workers: int = 6) -> None:
+    """Download the stale files among items [(url, dest, max_age_h)] a few at a time, so the loaders below
+    (which read them one by one) find them fresh. A file that fails here is simply tried again by the loader."""
+    from concurrent.futures import ThreadPoolExecutor
+    now = time.time()
+    stale = [(u, d, a) for u, d, a in items if not (d.exists() and now - d.stat().st_mtime < a * 3600)]
+    if len(stale) < 2:
+        return
+
+    def one(x):
+        try:
+            _get(*x)
+        except Exception:
+            pass
+    with ThreadPoolExecutor(workers) as ex:
+        list(ex.map(one, stale))
+
+
 def norm_name(s: str) -> str:
     s = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode()
     return " ".join(s.replace(".", " ").replace("-", " ").split()).lower()
@@ -138,6 +156,10 @@ def _fd_season_label(code: str) -> str:
 def load_domestic(n_back: int = 3, max_age_h: float = 6) -> pd.DataFrame:
     seasons = season_codes(n_back)
     frames = []
+    _prefetch([(f"https://www.football-data.co.uk/mmz4281/{s}/{code}.csv", DATA_DIR / "fd" / f"{s}_{code}.csv",
+                max_age_h if s == seasons[-1] else 24 * 365) for code in MAIN_LEAGUES.values() for s in seasons]
+              + [(f"https://www.football-data.co.uk/new/{code}.csv", DATA_DIR / "fd" / f"new_{code}.csv", max_age_h)
+                 for code in EXTRA_LEAGUES.values()])
     for comp, code in MAIN_LEAGUES.items():
         for s in seasons:
             url = f"https://www.football-data.co.uk/mmz4281/{s}/{code}.csv"
@@ -200,6 +222,9 @@ def load_uefa(n_back: int = 3, max_age_h: float = 6) -> pd.DataFrame:
     today = pd.Timestamp.today()
     start = today.year if today.month >= 7 else today.year - 1
     rows = []
+    _prefetch([(f"https://fixturedownload.com/feed/json/{slug}-{y}", DATA_DIR / "uefa" / f"{slug}-{y}.json",
+                max_age_h if y == start else 24 * 365)
+               for slug in UEFA_COMPS.values() for y in range(start - n_back, start + 1)])
     for comp, slug in UEFA_COMPS.items():
         for y in range(start - n_back, start + 1):
             url = f"https://fixturedownload.com/feed/json/{slug}-{y}"

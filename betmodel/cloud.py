@@ -59,9 +59,12 @@ CODE = ("betmodel/*.py", "betmodel/*.json", "requirements.txt", "requirements-cl
 # workflow step names as the progress display words them
 STEP_TEXT = {"Set up job": "Starting a GitHub computer", "Get the code": "Getting the code",
              "Decide what to run": "Getting ready", "Set up Python": "Setting up Python",
-             "Install packages": "Installing packages", "Restore the NFL and soccer files": "Loading the NFL and soccer data",
-             "Upload the page": "Preparing the page", "Publish the page": "Publishing the page"}
+             "Restore the Python packages": "Loading the Python packages", "Install packages": "Installing packages",
+             "Use the packages": "Getting ready", "Restore the NFL and soccer files": "Loading the NFL and soccer data",
+             "Upload the page": "Preparing the page", "Save the NFL and soccer files": "Saving the data files",
+             "Publish the page": "Publishing the page"}
 STEP_WEIGHT = {"Run the model": 8, "Install packages": 2}
+MTIMES = "soccer/_mtimes.txt"  # inside the cached folders: changes whenever a file was re-downloaded
 
 
 # ============================================================================ GitHub
@@ -545,6 +548,20 @@ def _keepalive() -> None:
         print(f"  ! keep-alive commit failed: {e}")
 
 
+def _stamp_files() -> None:
+    """List every source file's download time in a file inside the cached folders. The workflow saves the cache
+    under a hash of the folders, so a re-downloaded file (even one with the same contents) gets saved and the next
+    run starts with it fresh instead of downloading it again."""
+    lines = []
+    for d in FILE_DIRS:
+        for f in sorted((DATA / d).rglob("*")) if (DATA / d).exists() else []:
+            if f.is_file() and f.relative_to(DATA).as_posix() != MTIMES:
+                st = f.stat()
+                lines.append(f"{f.relative_to(DATA).as_posix()} {int(st.st_mtime)} {st.st_size}")
+    (DATA / MTIMES).parent.mkdir(parents=True, exist_ok=True)
+    (DATA / MTIMES).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _refresh_seed(rp: str, tk: str) -> None:
     seeds = _assets(_release(rp, tk), "files")
     newest = _asset_time(seeds[0]) if seeds else None
@@ -593,6 +610,7 @@ def _job(kind: str, rp: str, tk: str) -> None:
         res = engine.load_last()
     for n in (res.notes if res is not None else []):
         print("  note:", n)
+    _stamp_files()
     if res is not None:
         from . import snapshot
         snapshot.save(res)
@@ -694,7 +712,7 @@ def trigger(kind: str = "run", progress=lambda f, m: None, timeout_min: float = 
         before = dispatch(kind)
         t0, run = time.time(), None
         while True:
-            time.sleep(3 if run is None else 5)
+            time.sleep(3)
             if time.time() - t0 > timeout_min * 60:
                 raise RuntimeError(f"still running on GitHub after {timeout_min:.0f} minutes"
                                    + (f": {run['html_url']}" if run else ""))

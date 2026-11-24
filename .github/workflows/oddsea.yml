@@ -53,25 +53,40 @@ jobs:
         run: python3 -m betmodel.cloud plan --kind "$KIND" --event "$EVENT"
 
       - name: Set up Python
+        id: py
         if: steps.plan.outputs.go == 'true'
         uses: actions/setup-python@v7
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: requirements-cloud.txt
 
-      - name: Install packages
-        if: steps.plan.outputs.go == 'true'
-        run: python -m pip install --disable-pip-version-check -r requirements-cloud.txt
-
-      - name: Restore the NFL and soccer files
+      # the installed packages are kept between runs (rebuilt only when Python or requirements-cloud.txt change)
+      - name: Restore the Python packages
+        id: venv
         if: steps.plan.outputs.go == 'true'
         uses: actions/cache@v6
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements-cloud.txt') }}
+
+      - name: Install packages
+        if: steps.plan.outputs.go == 'true' && steps.venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements-cloud.txt
+
+      - name: Use the packages
+        if: steps.plan.outputs.go == 'true'
+        run: echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+
+      # the newest saved copy of the downloaded NFL / soccer files (saved again below whenever one was re-downloaded)
+      - name: Restore the NFL and soccer files
+        if: steps.plan.outputs.go == 'true'
+        uses: actions/cache/restore@v6
         with:
           path: |
             data/nfl
             data/soccer
-          key: oddsea-files-${{ steps.plan.outputs.day }}
+          key: oddsea-files-${{ github.run_id }}
           restore-keys: oddsea-files-
 
       - name: Run the model
@@ -87,6 +102,16 @@ jobs:
         with:
           path: snapshot
 
+      - name: Save the NFL and soccer files
+        if: steps.model.outcome == 'success'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            data/nfl
+            data/soccer
+          key: oddsea-files-${{ hashFiles('data/nfl/**', 'data/soccer/**') }}
+
   deploy:
     name: Publish
     needs: update
@@ -100,3 +125,5 @@ jobs:
       - name: Publish the page
         id: pages
         uses: actions/deploy-pages@v5
+        with:
+          reporting_interval: 2000   # check every 2 s whether the page is live (default 5 s)

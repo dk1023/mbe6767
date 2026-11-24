@@ -321,7 +321,7 @@ CLOUD_JS = r"""
       }
       cur.id = r.id; cur.errs = 0; keep();
       if (r.status === 'completed') return done(r);
-      return steps(r).then(function () { setTimeout(poll, 6000); });
+      return steps(r).then(function () { setTimeout(poll, 4000); });
     }).catch(function (e) {
       if (e && (e.status === 401 || e.status === 403)) return fail(explain(e));
       cur.errs = (cur.errs || 0) + 1;
@@ -353,8 +353,8 @@ CLOUD_JS = r"""
     (function wait() {   // the page is live a moment after the run finishes
       fetch('status.json?t=' + Date.now(), {cache: 'no-store'}).then(function (x) { return x.ok ? x.json() : null; })
         .catch(function () { return null; }).then(function (s) {
-          if ((s && s.build && s.build !== C.build) || ++n > 25) { stop(); return reload(s && s.build); }
-          setTimeout(wait, 3000);
+          if ((s && s.build && s.build !== C.build) || ++n > 40) { stop(); return reload(s && s.build); }
+          setTimeout(wait, 2000);
         });
     })();
   }

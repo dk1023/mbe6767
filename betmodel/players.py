@@ -126,14 +126,15 @@ def collect(comps=None, seasons=None, progress=lambda f, m: None, workers: int =
     seasons = seasons or SEASONS
     with connect() as con:
         have = {r[0] for r in con.execute("SELECT id FROM pm_matches WHERE ok=1")}
-    todo = []
-    for comp in comps:
-        for s in seasons:
-            try:
-                todo += [m for m in season_matches(comp, s) if m["id"] not in have]
-            except Exception as e:
-                print(f"  ! FotMob {comp} {s}: {e}")
-            time.sleep(0.3)
+    def listing(cs):
+        comp, s = cs
+        try:
+            return [m for m in season_matches(comp, s) if m["id"] not in have]
+        except Exception as e:
+            print(f"  ! FotMob {comp} {s}: {e}")
+            return []
+    with ThreadPoolExecutor(min(5, max(1, len(comps) * len(seasons)))) as ex:  # the season lists, together
+        todo = [m for part in ex.map(listing, [(c, s) for c in comps for s in seasons]) for m in part]
     done = {"n": 0}
 
     def one(m):

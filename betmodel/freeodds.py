@@ -56,6 +56,21 @@ def kalshi_markets(series: str) -> list[dict]:
     return slim
 
 
+def warm(comps: list[str], workers: int = 8) -> None:
+    """Fetch every Kalshi series these competitions use at the same time (a run's later lookups then come from
+    the 3-minute cache instead of one request after another)."""
+    from concurrent.futures import ThreadPoolExecutor
+    series = [s for c in comps for s in SERIES.get(c, ()) if s]
+
+    def one(s):
+        try:
+            kalshi_markets(s)
+        except Exception:
+            pass  # the normal lookup tries again and reports any problem
+    with ThreadPoolExecutor(workers) as ex:
+        list(ex.map(one, series))
+
+
 def _mid(m: dict):
     """Mid price as a chance, or None when the quote is too wide (or empty) to trust."""
     try:
