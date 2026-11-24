@@ -186,12 +186,19 @@ def kalshi_soccer(comp: str, resolve) -> dict:
             ak, hk = sides
         else:
             continue
-        names = re.search(r"the (.+?) vs (.+?) professional", str(tie.get("rules_primary") or ""))
-        hn = names.group(1).strip() if names else ms[hk].get("yes_sub_title")
-        an = names.group(2).strip() if names else ms[ak].get("yes_sub_title")
-        try:
-            h, a = resolve(hn), resolve(an)
-        except (SystemExit, Exception):
+        # "If Tie is the result of the Besiktas vs Be'er Sheva professional ..." / "If Besiktas wins the Besiktas vs ..."
+        txt = " ".join(str(m.get("rules_primary") or "") for m in (tie, ms[hk], ms[ak]))
+        names = re.search(r"(?:result of|wins) the (.+?) vs\.? (.+?) professional", txt)
+        tries = ([(names.group(1).strip(), names.group(2).strip())] if names else []) + \
+                [(ms[hk].get("yes_sub_title"), ms[ak].get("yes_sub_title"))]  # the short labels as a second try
+        h = a = None
+        for hn, an in tries:
+            try:
+                h, a = resolve(hn), resolve(an)
+                break
+            except (SystemExit, Exception):
+                h = a = None
+        if h is None:
             continue
         rec = {"date": _kick(tie, code), "h2h": {}, "spreads": {}, "totals": {},
                "kalshi": {"code": code, "s_game": gser, "s_spread": None, "s_total": tser, "home_k": hk, "away_k": ak}}

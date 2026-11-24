@@ -34,7 +34,10 @@ def scoreboard(comp: str, days: int = 4, dates: list | None = None) -> list[dict
     if dates:
         urls = [f"{BASE}/{LEAGUES[comp]}/scoreboard?dates={d}" for d in sorted(set(dates))]
     elif comp == "NFL":
-        urls = [f"{BASE}/{LEAGUES[comp]}/scoreboard"]
+        # day by day through the coming week: the plain feed is ESPN's "current week", which until about Wednesday
+        # is still last week's finished games, so the new week's DraftKings prices and game ids would be missed
+        urls = [f"{BASE}/{LEAGUES[comp]}/scoreboard?dates={(today + pd.Timedelta(days=i)):%Y%m%d}"
+                for i in range(-1, max(days, 8) + 1)]
     else:  # soccer feeds only accept one day per request
         urls = [f"{BASE}/{LEAGUES[comp]}/scoreboard?dates={(today + pd.Timedelta(days=i)):%Y%m%d}"
                 for i in range(-1, days + 1)]
